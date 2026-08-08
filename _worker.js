@@ -41,17 +41,33 @@ function jsonResponse(data, status = 200, setCookie = false, userId = '') {
 }
 
 // ================================================================
-//  HTML 页面（动态注入生平、挽联）
+//  HTML 页面（动态注入生平、挽联、背景图片）
 // ================================================================
-function getHTML(biography, leftEpitaph, rightEpitaph) {
-  // 转义防止注入（简单处理）
+function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
+  // 转义防止注入
   const safeBio = biography.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   const safeLeft = leftEpitaph.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const safeRight = rightEpitaph.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  // 只有挽联有内容才显示
   const showLeft = safeLeft && safeLeft.trim() !== '';
   const showRight = safeRight && safeRight.trim() !== '';
+
+  // 背景图片样式（若有）
+  const bgStyle = bgImage ? `
+    body {
+      background-image: url('${bgImage}');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+    }
+    .shrine {
+      background-color: rgba(36, 36, 42, 0.88);
+      backdrop-filter: blur(2px);
+    }
+  ` : `
+    body { background: #1a1a1e; }
+    .shrine { background: #24242a; }
+  `;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -63,18 +79,20 @@ function getHTML(biography, leftEpitaph, rightEpitaph) {
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
       min-height:100vh;
-      background:#1a1a1e;
       display:flex;
       justify-content:center;
       align-items:center;
       font-family:'Times New Roman','宋体','SimSun','PingFang SC',serif;
       color:#c0b8b0;
       padding:20px;
+      transition: background-image 0.5s ease;
+      ${bgImage ? '' : 'background:#1a1a1e;'}
     }
+    /* 动态背景样式 */
+    ${bgStyle}
     .shrine {
       max-width:480px;
       width:100%;
-      background:#24242a;
       border:1px solid #3a3a44;
       border-radius:8px;
       padding:32px 24px 28px;
@@ -82,8 +100,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph) {
       display:flex;
       flex-direction:column;
       align-items:center;
+      backdrop-filter: ${bgImage ? 'blur(2px)' : 'none'};
     }
-    /* 挽联+相框容器 */
     .photo-section {
       display:flex;
       align-items:center;
@@ -105,12 +123,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph) {
       min-width:30px;
       text-align:center;
     }
-    .epitaph-left {
-      order:0;
-    }
-    .epitaph-right {
-      order:2;
-    }
+    .epitaph-left { order:0; }
+    .epitaph-right { order:2; }
     .photo-frame {
       width:130px;
       height:160px;
@@ -165,7 +179,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph) {
       padding:12px 16px;
       border-left:2px solid #4a4a56;
       border-right:2px solid #4a4a56;
-      background:#1e1e26;
+      background:rgba(30, 30, 38, 0.8);
       border-radius:4px;
       font-size:15px;
       line-height:1.8;
@@ -196,7 +210,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph) {
       border-radius:6px;
       transition:background 0.2s;
     }
-    .incense-area:hover { background:#2a2a32; }
+    .incense-area:hover { background:rgba(42, 42, 50, 0.6); }
     .sticks {
       display:flex;
       gap:22px;
@@ -344,7 +358,6 @@ function getHTML(biography, leftEpitaph, rightEpitaph) {
       height:24px;
     }
 
-    /* 响应式调整 */
     @media (max-width:480px) {
       .shrine { padding:20px 16px; }
       .photo-frame { width:100px; height:130px; }
@@ -381,12 +394,11 @@ function getHTML(biography, leftEpitaph, rightEpitaph) {
   </div>
 
   <div class="tablet">
-    <div class="title">▣ 灵 位 ▣</div>
+    <div class="title">▣ 灵 位</div>
     <div class="name">追 思</div>
     <div class="sub">· 永 怀 ·</div>
   </div>
 
-  <!-- 生平 -->
   <div class="biography">
     <span class="bio-label">—— 生 平 ——</span>
     <div class="bio-content">${safeBio}</div>
@@ -556,7 +568,7 @@ export default {
     const MAX_USER_INCENSE = parseInt(env.MAX_USER_INCENSE) || 3;
     const maxIncense = MAX_USER_INCENSE > 0 ? MAX_USER_INCENSE : 3;
 
-    // 2. 生平内容
+    // 2. 生平
     let biography = DEFAULT_BIOGRAPHY;
     try {
       if (env && env.INCENSE_KV) {
@@ -568,10 +580,9 @@ export default {
       biography = env.BIOGRAPHY;
     }
 
-    // 3. 挽联内容（左侧 = 下联，右侧 = 上联）
+    // 3. 挽联
     let leftEpitaph = DEFAULT_LEFT_EPITAPH;
     let rightEpitaph = DEFAULT_RIGHT_EPITAPH;
-
     try {
       if (env && env.INCENSE_KV) {
         const kvLeft = await env.INCENSE_KV.get('epitaph_left');
@@ -580,13 +591,17 @@ export default {
         if (kvRight) rightEpitaph = kvRight;
       }
     } catch (e) { /* ignore */ }
-
-    // 如果 KV 没有，且环境变量有，则使用环境变量
     if (leftEpitaph === DEFAULT_LEFT_EPITAPH && env && env.EPITAPH_LEFT) {
       leftEpitaph = env.EPITAPH_LEFT;
     }
     if (rightEpitaph === DEFAULT_RIGHT_EPITAPH && env && env.EPITAPH_RIGHT) {
       rightEpitaph = env.EPITAPH_RIGHT;
+    }
+
+    // 4. 背景图片
+    let bgImage = '';
+    if (env && env.BACKGROUND_IMAGE) {
+      bgImage = env.BACKGROUND_IMAGE.trim();
     }
 
     // ---------- API 路由 ----------
@@ -665,7 +680,7 @@ export default {
 
     // ---------- 根路径返回 HTML ----------
     if (path === '/') {
-      const html = getHTML(biography, leftEpitaph, rightEpitaph);
+      const html = getHTML(biography, leftEpitaph, rightEpitaph, bgImage);
       return new Response(html, {
         headers: { 'Content-Type': 'text/html;charset=utf-8' },
       });
