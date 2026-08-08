@@ -1,4 +1,12 @@
 // ================================================================
+//  配置（默认值）
+// ================================================================
+const DEFAULT_MAX_INCENSE = 3;
+const DEFAULT_BIOGRAPHY = '愿逝者安息，生者坚强。';
+const DEFAULT_LEFT_EPITAPH = '音容宛在';
+const DEFAULT_RIGHT_EPITAPH = '浩气长存';
+
+// ================================================================
 //  辅助函数
 // ================================================================
 
@@ -33,9 +41,18 @@ function jsonResponse(data, status = 200, setCookie = false, userId = '') {
 }
 
 // ================================================================
-//  HTML 页面（内嵌）
+//  HTML 页面（动态注入生平、挽联）
 // ================================================================
-function getHTML() {
+function getHTML(biography, leftEpitaph, rightEpitaph) {
+  // 转义防止注入（简单处理）
+  const safeBio = biography.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  const safeLeft = leftEpitaph.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safeRight = rightEpitaph.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // 只有挽联有内容才显示
+  const showLeft = safeLeft && safeLeft.trim() !== '';
+  const showRight = safeRight && safeRight.trim() !== '';
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -55,7 +72,7 @@ function getHTML() {
       padding:20px;
     }
     .shrine {
-      max-width:400px;
+      max-width:480px;
       width:100%;
       background:#24242a;
       border:1px solid #3a3a44;
@@ -66,18 +83,47 @@ function getHTML() {
       flex-direction:column;
       align-items:center;
     }
+    /* 挽联+相框容器 */
+    .photo-section {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      width:100%;
+      margin-bottom:18px;
+    }
+    .epitaph {
+      writing-mode: vertical-rl;
+      font-size:28px;
+      letter-spacing:8px;
+      color:#b0a8a0;
+      font-weight:300;
+      padding:8px 2px;
+      white-space:nowrap;
+      line-height:1.6;
+      text-shadow:0 0 6px rgba(160,140,120,0.1);
+      min-width:30px;
+      text-align:center;
+    }
+    .epitaph-left {
+      order:0;
+    }
+    .epitaph-right {
+      order:2;
+    }
     .photo-frame {
       width:130px;
       height:160px;
       border:2px solid #4a4a56;
       border-radius:4px;
       background:#1a1a1e;
-      margin-bottom:18px;
       overflow:hidden;
       display:flex;
       align-items:center;
       justify-content:center;
       box-shadow:inset 0 0 20px rgba(0,0,0,0.4);
+      flex-shrink:0;
+      order:1;
     }
     .photo-frame img {
       width:100%;
@@ -89,7 +135,7 @@ function getHTML() {
       text-align:center;
       padding:14px 20px 12px;
       border-bottom:1px solid #3a3a44;
-      margin-bottom:20px;
+      margin-bottom:16px;
       width:100%;
     }
     .tablet .title {
@@ -112,6 +158,32 @@ function getHTML() {
       color:#6a6a7a;
       letter-spacing:4px;
       margin-top:6px;
+    }
+    .biography {
+      width:100%;
+      margin:6px 0 14px;
+      padding:12px 16px;
+      border-left:2px solid #4a4a56;
+      border-right:2px solid #4a4a56;
+      background:#1e1e26;
+      border-radius:4px;
+      font-size:15px;
+      line-height:1.8;
+      color:#d0c8c0;
+      text-align:center;
+      max-height:200px;
+      overflow-y:auto;
+    }
+    .biography .bio-label {
+      font-size:12px;
+      letter-spacing:4px;
+      color:#7a7a8a;
+      margin-bottom:6px;
+      display:block;
+    }
+    .biography .bio-content {
+      white-space:pre-wrap;
+      word-break:break-word;
     }
     .incense-area {
       display:flex;
@@ -271,35 +343,55 @@ function getHTML() {
       margin-top:6px;
       height:24px;
     }
-    @media (max-width:420px) {
+
+    /* 响应式调整 */
+    @media (max-width:480px) {
       .shrine { padding:20px 16px; }
       .photo-frame { width:100px; height:130px; }
+      .epitaph { font-size:20px; letter-spacing:4px; padding:4px 2px; }
+      .photo-section { gap:6px; }
       .tablet .name { font-size:28px; letter-spacing:6px; }
       .counter .number { font-size:40px; }
       .btn-incense { font-size:16px; padding:12px 24px; }
       .sticks { gap:16px; height:70px; }
       .stick { height:48px; }
       .censer { width:110px; height:20px; }
+      .biography { font-size:14px; padding:10px 12px; }
     }
-    @media (max-width:350px) {
+    @media (max-width:380px) {
       .photo-frame { width:80px; height:106px; }
+      .epitaph { font-size:16px; letter-spacing:2px; }
       .tablet .name { font-size:22px; letter-spacing:4px; }
       .counter .number { font-size:32px; }
       .btn-incense { font-size:14px; padding:10px 16px; letter-spacing:4px; }
+      .biography { font-size:13px; }
     }
   </style>
 </head>
 <body>
 <div class="shrine">
-  <div class="photo-frame">
-    <!-- ★★★ 替换为逝者照片 URL ★★★ -->
-    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='160' viewBox='0 0 130 160'%3E%3Crect width='130' height='160' fill='%231a1a1e'/%3E%3Ctext x='65' y='75' font-family='serif' font-size='16' fill='%235a5a6a' text-anchor='middle'%3E遗 像%3C/text%3E%3Ctext x='65' y='95' font-family='serif' font-size='12' fill='%234a4a56' text-anchor='middle'%3E(请替换照片)%3C/text%3E%3C/svg%3E" alt="逝者遗像" />
+  <!-- 相框 + 挽联 -->
+  <div class="photo-section">
+    ${showLeft ? `<div class="epitaph epitaph-left">${safeLeft}</div>` : ''}
+    <div class="photo-frame">
+      <!-- ★★★ 替换为逝者照片 URL ★★★ -->
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='160' viewBox='0 0 130 160'%3E%3Crect width='130' height='160' fill='%231a1a1e'/%3E%3Ctext x='65' y='75' font-family='serif' font-size='16' fill='%235a5a6a' text-anchor='middle'%3E遗 像%3C/text%3E%3Ctext x='65' y='95' font-family='serif' font-size='12' fill='%234a4a56' text-anchor='middle'%3E(请替换照片)%3C/text%3E%3C/svg%3E" alt="逝者遗像" />
+    </div>
+    ${showRight ? `<div class="epitaph epitaph-right">${safeRight}</div>` : ''}
   </div>
+
   <div class="tablet">
-    <div class="title">▣ 灵 位</div>
+    <div class="title">▣ 灵 位 ▣</div>
     <div class="name">追 思</div>
     <div class="sub">· 永 怀 ·</div>
   </div>
+
+  <!-- 生平 -->
+  <div class="biography">
+    <span class="bio-label">—— 生 平 ——</span>
+    <div class="bio-content">${safeBio}</div>
+  </div>
+
   <div class="incense-area" id="incenseArea">
     <div class="sticks" id="sticks">
       <div class="stick" data-idx="0"></div>
@@ -317,7 +409,7 @@ function getHTML() {
   </div>
 
   <div class="personal-counter">
-    您已上香 <span id="userCount">0</span> / <span id="maxCount">3</span> 支
+    您已上香 <span id="userCount">0</span> / <span id="maxUserDisplay">3</span> 支
   </div>
 
   <div class="msg" id="msg"></div>
@@ -331,13 +423,13 @@ function getHTML() {
 <script>
   const globalDisplay = document.getElementById('globalCount');
   const userDisplay = document.getElementById('userCount');
-  const maxDisplay = document.getElementById('maxCount');
+  const maxDisplay = document.getElementById('maxUserDisplay');
   const btnIncense = document.getElementById('btnIncense');
   const incenseArea = document.getElementById('incenseArea');
   const sticks = document.querySelectorAll('.stick');
   const msg = document.getElementById('msg');
 
-  let maxUserIncense = 3; // 默认值，从 API 获取后更新
+  let maxUserIncense = 3;
 
   function showMsg(text, isError = false) {
     msg.textContent = text;
@@ -356,14 +448,17 @@ function getHTML() {
       } catch (_) {}
       throw new Error(errMsg);
     }
-    return await res.json();
+    const data = await res.json();
+    if (data.maxIncense) {
+      maxUserIncense = data.maxIncense;
+      maxDisplay.textContent = maxUserIncense;
+    }
+    return data;
   }
 
-  function updateDisplay(global, user, maxIncense) {
-    maxUserIncense = maxIncense || maxUserIncense;
+  function updateDisplay(global, user) {
     globalDisplay.textContent = global.toLocaleString();
     userDisplay.textContent = user;
-    maxDisplay.textContent = maxUserIncense;
     btnIncense.disabled = user >= maxUserIncense;
     if (user >= maxUserIncense) {
       showMsg('您已上完' + maxUserIncense + '支香，感恩追思。', false);
@@ -391,7 +486,11 @@ function getHTML() {
         throw new Error(errMsg);
       }
       const data = await res.json();
-      updateDisplay(data.global, data.user, data.maxIncense);
+      if (data.maxIncense) {
+        maxUserIncense = data.maxIncense;
+        maxDisplay.textContent = maxUserIncense;
+      }
+      updateDisplay(data.global, data.user);
 
       sticks.forEach((s, idx) => {
         s.classList.remove('lit');
@@ -414,7 +513,9 @@ function getHTML() {
   async function init() {
     try {
       const status = await fetchStatus();
-      updateDisplay(status.global, status.user, status.maxIncense);
+      maxDisplay.textContent = status.maxIncense || 3;
+      maxUserIncense = status.maxIncense || 3;
+      updateDisplay(status.global, status.user);
     } catch (err) {
       console.error(err);
       showMsg('加载失败：' + err.message, true);
@@ -443,16 +544,50 @@ function getHTML() {
 }
 
 // ================================================================
-//  Worker 入口
+//  Worker 主逻辑
 // ================================================================
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // 从环境变量读取最大上香次数，默认 3
+    // ---------- 获取配置 ----------
+    // 1. 最大上香数
     const MAX_USER_INCENSE = parseInt(env.MAX_USER_INCENSE) || 3;
     const maxIncense = MAX_USER_INCENSE > 0 ? MAX_USER_INCENSE : 3;
+
+    // 2. 生平内容
+    let biography = DEFAULT_BIOGRAPHY;
+    try {
+      if (env && env.INCENSE_KV) {
+        const kvBio = await env.INCENSE_KV.get('biography');
+        if (kvBio) biography = kvBio;
+      }
+    } catch (e) { /* ignore */ }
+    if (biography === DEFAULT_BIOGRAPHY && env && env.BIOGRAPHY) {
+      biography = env.BIOGRAPHY;
+    }
+
+    // 3. 挽联内容（左侧 = 下联，右侧 = 上联）
+    let leftEpitaph = DEFAULT_LEFT_EPITAPH;
+    let rightEpitaph = DEFAULT_RIGHT_EPITAPH;
+
+    try {
+      if (env && env.INCENSE_KV) {
+        const kvLeft = await env.INCENSE_KV.get('epitaph_left');
+        if (kvLeft) leftEpitaph = kvLeft;
+        const kvRight = await env.INCENSE_KV.get('epitaph_right');
+        if (kvRight) rightEpitaph = kvRight;
+      }
+    } catch (e) { /* ignore */ }
+
+    // 如果 KV 没有，且环境变量有，则使用环境变量
+    if (leftEpitaph === DEFAULT_LEFT_EPITAPH && env && env.EPITAPH_LEFT) {
+      leftEpitaph = env.EPITAPH_LEFT;
+    }
+    if (rightEpitaph === DEFAULT_RIGHT_EPITAPH && env && env.EPITAPH_RIGHT) {
+      rightEpitaph = env.EPITAPH_RIGHT;
+    }
 
     // ---------- API 路由 ----------
     if (path === '/api/incense') {
@@ -485,8 +620,8 @@ export default {
           return jsonResponse({
             global,
             user,
-            maxIncense: maxIncense,
-            userId,
+            maxIncense,
+            userId
           }, 200, needSetCookie, userId);
         } catch (err) {
           return jsonResponse({ error: err.message }, 500);
@@ -502,7 +637,7 @@ export default {
               message: '您已上完' + maxIncense + '支香。',
               global,
               user,
-              maxIncense: maxIncense,
+              maxIncense,
               userId,
             }, 403, needSetCookie, userId);
           }
@@ -516,7 +651,7 @@ export default {
           return jsonResponse({
             global: newGlobal,
             user: newUser,
-            maxIncense: maxIncense,
+            maxIncense,
             userId,
           }, 200, needSetCookie, userId);
         } catch (err) {
@@ -530,7 +665,7 @@ export default {
 
     // ---------- 根路径返回 HTML ----------
     if (path === '/') {
-      const html = getHTML();
+      const html = getHTML(biography, leftEpitaph, rightEpitaph);
       return new Response(html, {
         headers: { 'Content-Type': 'text/html;charset=utf-8' },
       });
