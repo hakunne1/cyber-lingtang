@@ -394,7 +394,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
   </div>
 
   <div class="tablet">
-    <div class="title">▣ 灵 位</div>
+    <div class="title">▣ 灵 位 ▣</div>
     <div class="name">追 思</div>
     <div class="sub">· 永 怀 ·</div>
   </div>
