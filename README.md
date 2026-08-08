@@ -1,2 +1,7 @@
-# cyber-lingtang
-使用Cloudflare Workers搭建赛博灵堂 
+# 赛博灵堂 cyber-lingtang
+
+## ⚙️ 环境变量配置
+
+| 变量名 | 描述 | 默认值 |
+|--------|------|--------|
+| `MAX_USER_INCENSE` | 每位用户最多可上香的次数 | `3` |
