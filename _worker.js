@@ -1,15 +1,31 @@
 // ================================================================
-//  配置（默认值）
+//  默认配置（所有内容均可通过环境变量覆盖）
 // ================================================================
-const DEFAULT_MAX_INCENSE = 3;
-const DEFAULT_BIOGRAPHY = '愿逝者安息，生者坚强。';
-const DEFAULT_LEFT_EPITAPH = '音容宛在';
-const DEFAULT_RIGHT_EPITAPH = '浩气长存';
+
+// 用户限制
+const DEFAULT_MAX_INCENSE = 3;                    // 每人最多上香次数
+
+// 文本内容
+const DEFAULT_BIOGRAPHY = '愿逝者安息，生者坚强。';   // 生平
+const DEFAULT_LEFT_EPITAPH = '音容宛在';            // 左侧挽联（下联）
+const DEFAULT_RIGHT_EPITAPH = '浩气长存';           // 右侧挽联（上联）
+const DEFAULT_TABLET_NAME = '追思';                // 牌位主名
+const DEFAULT_TABLET_SUB = '· 永怀 ·';             // 牌位副标题
+const DEFAULT_PAGE_TITLE = '灵堂 · 追思';          // 浏览器标题
+
+// 图片资源
+const DEFAULT_PORTRAIT_URL = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'130\' height=\'160\' viewBox=\'0 0 130 160\'%3E%3Crect width=\'130\' height=\'160\' fill=\'%231a1a1e\'/%3E%3Ctext x=\'65\' y=\'75\' font-family=\'serif\' font-size=\'16\' fill=\'%235a5a6a\' text-anchor=\'middle\'%3E遗 像%3C/text%3E%3Ctext x=\'65\' y=\'95\' font-family=\'serif\' font-size=\'12\' fill=\'%234a4a56\' text-anchor=\'middle\'%3E(请替换照片)%3C/text%3E%3C/svg%3E';
+
+// 背景图片默认为空（纯色背景）
+const DEFAULT_BACKGROUND_IMAGE = '';
 
 // ================================================================
 //  辅助函数
 // ================================================================
 
+/**
+ * 从 Cookie 中读取指定名称的值
+ */
 function getCookie(request, name) {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return null;
@@ -21,6 +37,9 @@ function getCookie(request, name) {
   return null;
 }
 
+/**
+ * 生成简易 UUID v4
+ */
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     const r = Math.random() * 16 | 0;
@@ -29,30 +48,59 @@ function generateUUID() {
   });
 }
 
+/**
+ * 返回 JSON 响应，可选设置 Cookie
+ */
 function jsonResponse(data, status = 200, setCookie = false, userId = '') {
   const headers = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache',
   };
-  if (userId) {
+  if (setCookie && userId) {
+    // SameSite=None; Secure 要求 HTTPS（workers.dev 和自定义域名均支持）
     headers['Set-Cookie'] = `userId=${encodeURIComponent(userId)}; Path=/; Max-Age=31536000; SameSite=None; Secure`;
   }
   return new Response(JSON.stringify(data), { status, headers });
 }
 
-// ================================================================
-//  HTML 页面（动态注入生平、挽联、背景图片）
-// ================================================================
-function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
-  // 转义防止注入
-  const safeBio = biography.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-  const safeLeft = leftEpitaph.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const safeRight = rightEpitaph.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/**
+ * HTML 转义（防止 XSS 注入）
+ */
+function escapeHtml(text) {
+  if (!text) return '';
+  return text.replace(/&/g, '&amp;')
+             .replace(/</g, '&lt;')
+             .replace(/>/g, '&gt;')
+             .replace(/"/g, '&quot;')
+             .replace(/'/g, '&#039;');
+}
 
+// ================================================================
+//  HTML 页面生成器（所有动态内容由环境变量驱动）
+// ================================================================
+function getHTML({
+  biography,
+  leftEpitaph,
+  rightEpitaph,
+  bgImage,
+  portraitUrl,
+  tabletName,
+  tabletSub,
+  pageTitle,
+}) {
+  // 转义文本
+  const safeBio = biography.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  const safeLeft = escapeHtml(leftEpitaph);
+  const safeRight = escapeHtml(rightEpitaph);
+  const safeName = escapeHtml(tabletName);
+  const safeSub = escapeHtml(tabletSub);
+  const safeTitle = escapeHtml(pageTitle);
+
+  // 挽联显示控制（若内容为空则不渲染）
   const showLeft = safeLeft && safeLeft.trim() !== '';
   const showRight = safeRight && safeRight.trim() !== '';
 
-  // 背景图片样式（若有）
+  // 背景样式（若提供了背景图 URL，则使用背景图 + 毛玻璃效果）
   const bgStyle = bgImage ? `
     body {
       background-image: url('${bgImage}');
@@ -74,8 +122,9 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>灵堂 · 追思</title>
+  <title>${safeTitle}</title>
   <style>
+    /* ----- 重置 & 全局 ----- */
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
       min-height:100vh;
@@ -88,8 +137,9 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       transition: background-image 0.5s ease;
       ${bgImage ? '' : 'background:#1a1a1e;'}
     }
-    /* 动态背景样式 */
     ${bgStyle}
+
+    /* ----- 主容器 ----- */
     .shrine {
       max-width:480px;
       width:100%;
@@ -102,6 +152,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       align-items:center;
       backdrop-filter: ${bgImage ? 'blur(2px)' : 'none'};
     }
+
+    /* ----- 相框 + 挽联 ----- */
     .photo-section {
       display:flex;
       align-items:center;
@@ -145,6 +197,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       object-fit:cover;
       display:block;
     }
+
+    /* ----- 牌位 ----- */
     .tablet {
       text-align:center;
       padding:14px 20px 12px;
@@ -173,6 +227,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       letter-spacing:4px;
       margin-top:6px;
     }
+
+    /* ----- 生平 ----- */
     .biography {
       width:100%;
       margin:6px 0 14px;
@@ -199,6 +255,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       white-space:pre-wrap;
       word-break:break-word;
     }
+
+    /* ----- 香炉 & 香 ----- */
     .incense-area {
       display:flex;
       flex-direction:column;
@@ -278,6 +336,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       border-radius:2px;
       border:1px solid #3a3a44;
     }
+
+    /* ----- 计数器 ----- */
     .counter {
       margin:12px 0 16px;
       text-align:center;
@@ -315,6 +375,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       font-weight:700;
       color:#e6e0d8;
     }
+
+    /* ----- 上香按钮 ----- */
     .btn-incense {
       background:#2a2a34;
       border:1px solid #4a4a56;
@@ -342,6 +404,8 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       transform:none;
     }
     .btn-incense .icon { font-size:22px; opacity:0.7; }
+
+    /* ----- 底部 & 消息 ----- */
     .footer {
       margin-top:20px;
       text-align:center;
@@ -358,6 +422,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       height:24px;
     }
 
+    /* ----- 响应式调整 ----- */
     @media (max-width:480px) {
       .shrine { padding:20px 16px; }
       .photo-frame { width:100px; height:130px; }
@@ -387,23 +452,25 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
   <div class="photo-section">
     ${showLeft ? `<div class="epitaph epitaph-left">${safeLeft}</div>` : ''}
     <div class="photo-frame">
-      <!-- ★★★ 替换为逝者照片 URL ★★★ -->
-      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='160' viewBox='0 0 130 160'%3E%3Crect width='130' height='160' fill='%231a1a1e'/%3E%3Ctext x='65' y='75' font-family='serif' font-size='16' fill='%235a5a6a' text-anchor='middle'%3E遗 像%3C/text%3E%3Ctext x='65' y='95' font-family='serif' font-size='12' fill='%234a4a56' text-anchor='middle'%3E(请替换照片)%3C/text%3E%3C/svg%3E" alt="逝者遗像" />
+      <img src="${portraitUrl}" alt="逝者遗像" />
     </div>
     ${showRight ? `<div class="epitaph epitaph-right">${safeRight}</div>` : ''}
   </div>
 
+  <!-- 牌位 -->
   <div class="tablet">
     <div class="title">▣ 灵 位 ▣</div>
-    <div class="name">追 思</div>
-    <div class="sub">· 永 怀 ·</div>
+    <div class="name">${safeName}</div>
+    <div class="sub">${safeSub}</div>
   </div>
 
+  <!-- 生平 -->
   <div class="biography">
     <span class="bio-label">—— 生 平 ——</span>
     <div class="bio-content">${safeBio}</div>
   </div>
 
+  <!-- 香炉 -->
   <div class="incense-area" id="incenseArea">
     <div class="sticks" id="sticks">
       <div class="stick" data-idx="0"></div>
@@ -415,17 +482,17 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
     </div>
   </div>
 
+  <!-- 计数器 -->
   <div class="counter">
     <div class="label">⟡ 总上香次数</div>
     <div class="number" id="globalCount">0</div>
   </div>
-
   <div class="personal-counter">
     您已上香 <span id="userCount">0</span> / <span id="maxUserDisplay">3</span> 支
   </div>
-
   <div class="msg" id="msg"></div>
 
+  <!-- 上香按钮 -->
   <button class="btn-incense" id="btnIncense">
     <span class="icon">🕯</span> 上香
   </button>
@@ -433,6 +500,9 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
 </div>
 
 <script>
+  // =============================================================
+  //  前端逻辑
+  // =============================================================
   const globalDisplay = document.getElementById('globalCount');
   const userDisplay = document.getElementById('userCount');
   const maxDisplay = document.getElementById('maxUserDisplay');
@@ -443,12 +513,14 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
 
   let maxUserIncense = 3;
 
+  /** 显示提示消息 */
   function showMsg(text, isError = false) {
     msg.textContent = text;
     msg.style.color = isError ? '#b08060' : '#a08060';
     setTimeout(() => { if (msg.textContent === text) msg.textContent = ''; }, 5000);
   }
 
+  /** 从 API 获取当前状态 */
   async function fetchStatus() {
     const res = await fetch('/api/incense', { credentials: 'include' });
     if (!res.ok) {
@@ -468,6 +540,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
     return data;
   }
 
+  /** 更新 UI */
   function updateDisplay(global, user) {
     globalDisplay.textContent = global.toLocaleString();
     userDisplay.textContent = user;
@@ -477,6 +550,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
     }
   }
 
+  /** 执行上香操作 */
   async function performIncense() {
     if (btnIncense.disabled) {
       showMsg('您已上完' + maxUserIncense + '支香。', true);
@@ -504,12 +578,14 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       }
       updateDisplay(data.global, data.user);
 
+      // 香火闪烁
       sticks.forEach((s, idx) => {
         s.classList.remove('lit');
         setTimeout(() => s.classList.add('lit'), idx * 50);
       });
       setTimeout(() => sticks.forEach(s => s.classList.remove('lit')), 600);
 
+      // 数字弹跳
       globalDisplay.classList.remove('pop');
       void globalDisplay.offsetWidth;
       globalDisplay.classList.add('pop');
@@ -522,6 +598,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
     }
   }
 
+  /** 初始化 */
   async function init() {
     try {
       const status = await fetchStatus();
@@ -534,6 +611,7 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
       btnIncense.disabled = true;
     }
 
+    // 事件绑定
     btnIncense.addEventListener('click', performIncense);
     incenseArea.addEventListener('click', (e) => {
       if (e.target.closest('.btn-incense')) return;
@@ -556,19 +634,19 @@ function getHTML(biography, leftEpitaph, rightEpitaph, bgImage) {
 }
 
 // ================================================================
-//  Worker 主逻辑
+//  Cloudflare Worker 入口
 // ================================================================
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // ---------- 获取配置 ----------
+    // ---------- 读取环境变量（全部带默认值） ----------
     // 1. 最大上香数
-    const MAX_USER_INCENSE = parseInt(env.MAX_USER_INCENSE) || 3;
-    const maxIncense = MAX_USER_INCENSE > 0 ? MAX_USER_INCENSE : 3;
+    const maxIncense = parseInt(env.MAX_USER_INCENSE) || DEFAULT_MAX_INCENSE;
+    const finalMax = maxIncense > 0 ? maxIncense : DEFAULT_MAX_INCENSE;
 
-    // 2. 生平
+    // 2. 生平（优先从 KV 读取，若无则取环境变量，再否则默认）
     let biography = DEFAULT_BIOGRAPHY;
     try {
       if (env && env.INCENSE_KV) {
@@ -580,7 +658,7 @@ export default {
       biography = env.BIOGRAPHY;
     }
 
-    // 3. 挽联
+    // 3. 挽联（左右）
     let leftEpitaph = DEFAULT_LEFT_EPITAPH;
     let rightEpitaph = DEFAULT_RIGHT_EPITAPH;
     try {
@@ -599,17 +677,43 @@ export default {
     }
 
     // 4. 背景图片
-    let bgImage = '';
+    let bgImage = DEFAULT_BACKGROUND_IMAGE;
     if (env && env.BACKGROUND_IMAGE) {
       bgImage = env.BACKGROUND_IMAGE.trim();
     }
 
-    // ---------- API 路由 ----------
+    // 5. 遗像 URL
+    let portraitUrl = DEFAULT_PORTRAIT_URL;
+    if (env && env.PORTRAIT_URL) {
+      portraitUrl = env.PORTRAIT_URL.trim();
+    }
+
+    // 6. 牌位主名
+    let tabletName = DEFAULT_TABLET_NAME;
+    if (env && env.TABLET_NAME) {
+      tabletName = env.TABLET_NAME.trim();
+    }
+
+    // 7. 牌位副标题
+    let tabletSub = DEFAULT_TABLET_SUB;
+    if (env && env.TABLET_SUB) {
+      tabletSub = env.TABLET_SUB.trim();
+    }
+
+    // 8. 页面标题
+    let pageTitle = DEFAULT_PAGE_TITLE;
+    if (env && env.PAGE_TITLE) {
+      pageTitle = env.PAGE_TITLE.trim();
+    }
+
+    // ---------- API 路由：/api/incense ----------
     if (path === '/api/incense') {
+      // 检查 KV 绑定
       if (!env || !env.INCENSE_KV) {
         return jsonResponse({ error: 'KV 绑定未配置，请检查 Worker 绑定设置。' }, 500);
       }
 
+      // 获取或创建用户 ID
       let userId = getCookie(request, 'userId');
       let needSetCookie = false;
       if (!userId) {
@@ -617,6 +721,7 @@ export default {
         needSetCookie = true;
       }
 
+      // 辅助：读取计数
       async function getCounts() {
         try {
           const global = await env.INCENSE_KV.get('global_count', 'json') || 0;
@@ -629,13 +734,14 @@ export default {
         }
       }
 
+      // GET：返回当前状态
       if (request.method === 'GET') {
         try {
           const { global, user } = await getCounts();
           return jsonResponse({
             global,
             user,
-            maxIncense,
+            maxIncense: finalMax,
             userId
           }, 200, needSetCookie, userId);
         } catch (err) {
@@ -643,16 +749,17 @@ export default {
         }
       }
 
+      // POST：上香
       if (request.method === 'POST') {
         try {
           const { global, user } = await getCounts();
-          if (user >= maxIncense) {
+          if (user >= finalMax) {
             return jsonResponse({
               error: 'limit_reached',
-              message: '您已上完' + maxIncense + '支香。',
+              message: '您已上完' + finalMax + '支香。',
               global,
               user,
-              maxIncense,
+              maxIncense: finalMax,
               userId,
             }, 403, needSetCookie, userId);
           }
@@ -666,7 +773,7 @@ export default {
           return jsonResponse({
             global: newGlobal,
             user: newUser,
-            maxIncense,
+            maxIncense: finalMax,
             userId,
           }, 200, needSetCookie, userId);
         } catch (err) {
@@ -678,14 +785,24 @@ export default {
       return new Response('Method Not Allowed', { status: 405 });
     }
 
-    // ---------- 根路径返回 HTML ----------
+    // ---------- 根路径：返回 HTML ----------
     if (path === '/') {
-      const html = getHTML(biography, leftEpitaph, rightEpitaph, bgImage);
+      const html = getHTML({
+        biography,
+        leftEpitaph,
+        rightEpitaph,
+        bgImage,
+        portraitUrl,
+        tabletName,
+        tabletSub,
+        pageTitle,
+      });
       return new Response(html, {
         headers: { 'Content-Type': 'text/html;charset=utf-8' },
       });
     }
 
+    // 其他路径返回 404
     return new Response('Not Found', { status: 404 });
   }
 };
