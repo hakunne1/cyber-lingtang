@@ -484,7 +484,7 @@ function getHTML({
 
   <!-- 计数器 -->
   <div class="counter">
-    <div class="label">⟡ 总上香次数</div>
+    <div class="label">⟡ 总上香次数 ⟡</div>
     <div class="number" id="globalCount">0</div>
   </div>
   <div class="personal-counter">
